@@ -21,7 +21,7 @@ const Flashcard: React.FC<FlashcardProps> = ({ word, mode, isFirst, onNextTest, 
   };
 
   const handleAction = (e: React.MouseEvent, knewIt: boolean) => {
-    e.stopPropagation(); 
+    e.stopPropagation();
     setFlipped(false);
     onNextTest(knewIt);
   };
@@ -37,11 +37,11 @@ const Flashcard: React.FC<FlashcardProps> = ({ word, mode, isFirst, onNextTest, 
     <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '20px' }}>
       <div className="flashcard-container" onClick={handleFlip}>
         <div className={`flashcard ${flipped ? 'flipped' : ''}`}>
-          
+
           {/* FRONT */}
           <div className="flashcard-face flashcard-front">
-            <button 
-              className="icon-btn" 
+            <button
+              className="icon-btn"
               onClick={(e) => { e.stopPropagation(); toggleFurigana(); }}
               style={{ position: 'absolute', top: '15px', right: '15px' }}
             >
@@ -51,8 +51,8 @@ const Flashcard: React.FC<FlashcardProps> = ({ word, mode, isFirst, onNextTest, 
             <div className={`furigana ${showFurigana ? 'visible' : ''}`}>
               {word.furigana}
             </div>
-            
-            <div className="word-original">
+
+            <div className="word-original jp-font">
               {word.original || '—'}
             </div>
           </div>
@@ -62,8 +62,8 @@ const Flashcard: React.FC<FlashcardProps> = ({ word, mode, isFirst, onNextTest, 
             <div className="furigana visible">
               {word.furigana}
             </div>
-            
-            <div className="word-original" style={{ fontSize: '2.5rem', marginBottom: '10px' }}>
+
+            <div className="word-original jp-font" style={{ fontSize: '3rem', marginBottom: '10px' }}>
               {word.original}
             </div>
 
@@ -71,7 +71,7 @@ const Flashcard: React.FC<FlashcardProps> = ({ word, mode, isFirst, onNextTest, 
               {word.korean}
             </div>
 
-            <div className="word-english">
+            <div className="word-english" style={{ fontSize: '1.2rem', marginTop: '12px' }}>
               {word.english}
             </div>
           </div>
@@ -83,25 +83,25 @@ const Flashcard: React.FC<FlashcardProps> = ({ word, mode, isFirst, onNextTest, 
       {mode === 'TEST' ? (
         <div className="action-area">
           <button className="btn-action btn-fail" onClick={(e) => handleAction(e, false)}>
-            <X size={26} /> 몰라요
+            <X size={26} />
           </button>
           <button className="btn-action btn-pass" onClick={(e) => handleAction(e, true)}>
-            <Check size={26} /> 알아요
+            <Check size={26} />
           </button>
         </div>
       ) : (
         <div className="action-area" style={{ paddingBottom: '10px' }}>
-          <button 
-            className="btn-action" 
-            style={{ background: isFirst ? 'var(--card-bg)' : 'rgba(56, 189, 248, 0.2)', color: isFirst ? 'var(--text-secondary)' : 'var(--text-primary)', border: '1px solid var(--card-border)' }} 
-            onClick={(e) => handleStudyAction(e, 'PREV')} 
+          <button
+            className="btn-action"
+            style={{ background: isFirst ? 'var(--card-bg)' : 'rgba(56, 189, 248, 0.2)', color: isFirst ? 'var(--text-secondary)' : 'var(--text-primary)', border: '1px solid var(--card-border)' }}
+            onClick={(e) => handleStudyAction(e, 'PREV')}
             disabled={isFirst}
           >
             <ChevronLeft size={26} /> 이전 카드
           </button>
-          <button 
-            className="btn-action" 
-            style={{ background: 'rgba(56, 189, 248, 0.2)', border: '1px solid var(--card-border)' }} 
+          <button
+            className="btn-action"
+            style={{ background: 'rgba(56, 189, 248, 0.2)', border: '1px solid var(--card-border)' }}
             onClick={(e) => handleStudyAction(e, 'NEXT')}
           >
             다음 카드 <ChevronRight size={26} />

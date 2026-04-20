@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { Settings, RefreshCw, XCircle, Play, Undo2, Flame } from 'lucide-react';
+import { Settings, RefreshCw, XCircle, Play, Undo2, Flame, BookOpen, Plus, Minus, Shuffle } from 'lucide-react';
 import { useStore, type Word } from './store/useStore';
 import Flashcard from './components/Flashcard';
+import WordListModal from './components/WordListModal';
 import vocabDataRaw from './assets/vocab_data.json';
 
 const vocabData = vocabDataRaw as Record<string, Word[]>;
@@ -25,7 +26,8 @@ function App() {
     endSession,
     resetKnownData,
     undoLastAnswer,
-    setDailyGoal
+    setDailyGoal,
+    shuffleSessionDeck
   } = useStore();
 
   // Local Form State
@@ -34,6 +36,7 @@ function App() {
   const [includeKnown, setIncludeKnown] = useState<boolean>(false);
   const [shuffle, setShuffle] = useState<boolean>(true);
   const [modeSelect, setModeSelect] = useState<'STUDY' | 'TEST'>('STUDY');
+  const [isWordListOpen, setIsWordListOpen] = useState<boolean>(false);
 
   const todayStr = new Date().toLocaleDateString('en-CA');
   const todayLearned = dailyStats[todayStr]?.learned || 0;
@@ -82,23 +85,23 @@ function App() {
   };
 
   const renderDashboard = () => (
-    <div className="dashboard-card">
-      <div className="dashboard-header">
-        <span>내 학습 진도</span>
+    <div className="compact-dashboard">
+      <div className="dashboard-header-compact">
+        <span style={{ color: 'var(--text-primary)' }}>오늘의 학습 🎯</span>
         {currentStreak > 0 && (
           <div className="streak-badge">
-            <Flame size={18} /> {currentStreak}일 연속!
+            <Flame size={14} /> {currentStreak}일째
           </div>
         )}
       </div>
 
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '5px' }}>
-          <span style={{ fontSize: '1.4rem', fontWeight: 800 }}>
-            {todayLearned} <span style={{ fontSize: '1rem', color: 'var(--text-secondary)' }}>/ {dailyGoal} 단어</span>
+          <span style={{ fontSize: '1.2rem', fontWeight: 800 }}>
+            {todayLearned} <span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>/ {dailyGoal} 단어</span>
           </span>
-          <button className="icon-btn" onClick={handleEditGoal} style={{ padding: '4px' }}>
-            <Settings size={18} />
+          <button className="icon-btn" onClick={handleEditGoal} style={{ padding: '0px' }}>
+            <Settings size={16} />
           </button>
         </div>
         
@@ -106,104 +109,141 @@ function App() {
           <div className="progress-fill" style={{ width: `${progressPercent}%` }} />
         </div>
         
-        <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '8px', textAlign: 'right' }}>
-          오늘 복습한 단어: {dailyStats[todayStr]?.reviewed || 0}개
+        <div className="dashboard-stats" style={{ marginTop: '6px' }}>
+          <span>누적 {knownWords.length}단어</span>
+          <span>복습 {dailyStats[todayStr]?.reviewed || 0}단어</span>
         </div>
       </div>
     </div>
   );
 
   const renderHomeForm = () => (
-    <div className="config-scroll-area">
+    <div className="home-layout">
       
+      <div className="home-top-bar">
+        <button className="icon-btn" onClick={() => setIsWordListOpen(true)} title="나의 단어장">
+          <BookOpen size={20} color="var(--accent-color)" />
+        </button>
+        {knownWords.length > 0 && (
+          <button 
+            className="icon-btn" 
+            onClick={() => {
+              if(window.confirm('모든 누적 학습 기록과 일일 통계를 초기화하시겠습니까?')) {
+                resetKnownData();
+              }
+            }}
+            title="초기화"
+          >
+            <RefreshCw size={18} color="var(--error-color)" />
+          </button>
+        )}
+      </div>
+
       {renderDashboard()}
 
-      <div className="config-group">
-        <div className="config-title">출제 급수 (다중 선택 가능)</div>
-        <div className="grid-select">
-          {ALL_LEVELS.map(lvl => (
-            <button
-              key={lvl}
-              onClick={() => toggleLevel(lvl)}
-              className={`btn-select ${selectedLevels.includes(lvl) ? 'active' : ''}`}
-            >
-              {lvl}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="config-group">
-        <div className="config-title">학습 모드 선택</div>
-        <div className="grid-select" style={{ display: 'flex', gap: '10px' }}>
-          <button 
-            style={{ flex: 1, padding: '15px' }} 
-            onClick={() => setModeSelect('STUDY')} 
-            className={`btn-select ${modeSelect === 'STUDY' ? 'active' : ''}`}
-          >
-            📖 편하게 쭉 훑어보기
-          </button>
-          <button 
-            style={{ flex: 1, padding: '15px' }} 
-            onClick={() => setModeSelect('TEST')} 
-            className={`btn-select ${modeSelect === 'TEST' ? 'active' : ''}`}
-          >
-            📝 실전 암기 테스트
-          </button>
-        </div>
-      </div>
-
-      <div className="config-group">
-        <div className="config-title">가져올 단어수</div>
-        <div className="grid-select">
-          {[20, 50, 100, 'ALL'].map(size => (
-            <button
-              key={size}
-              onClick={() => setBatchSize(size as number | 'ALL')}
-              className={`btn-select ${batchSize === size ? 'active' : ''}`}
-            >
-              {size === 'ALL' ? '전체' : `${size}개`}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="config-group" style={{ display: 'flex', gap: '15px' }}>
-        <div style={{ flex: 1 }}>
-          <div className="config-title">단어 섞기</div>
-          <div className="grid-select">
-            <button onClick={() => setShuffle(false)} className={`btn-select ${!shuffle ? 'active' : ''}`}>기본</button>
-            <button onClick={() => setShuffle(true)} className={`btn-select ${shuffle ? 'active' : ''}`}>랜덤</button>
+      <div className="settings-list">
+        {/* 출제 급수 (다중선택) */}
+        <div style={{ padding: '0 5px', marginBottom: '8px' }}>
+          <div className="setting-title" style={{ paddingLeft: '5px', marginBottom: '10px' }}>출제 급수</div>
+          <div className="level-pills">
+            {ALL_LEVELS.map(lvl => (
+              <button
+                key={lvl}
+                onClick={() => toggleLevel(lvl)}
+                className={`level-pill ${selectedLevels.includes(lvl) ? 'active' : ''}`}
+              >
+                {lvl}
+              </button>
+            ))}
           </div>
         </div>
-        <div style={{ flex: 1 }}>
-          <div className="config-title">오답노트 모드</div>
-          <div className="grid-select">
-            <button onClick={() => setIncludeKnown(false)} className={`btn-select ${!includeKnown ? 'active' : ''}`}>적용</button>
-            <button onClick={() => setIncludeKnown(true)} className={`btn-select ${includeKnown ? 'active' : ''}`}>미적용</button>
+
+        {/* 가져올 개수 */}
+        <div className="setting-row">
+          <div className="setting-title">가져올 개수</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', background: 'rgba(0,0,0,0.3)', borderRadius: '10px', overflow: 'hidden' }}>
+              <button 
+                className="icon-btn"
+                style={{ padding: '6px 10px', borderRadius: 0, borderRight: '1px solid rgba(255,255,255,0.05)' }}
+                onClick={() => batchSize !== 'ALL' && setBatchSize(Math.max(5, batchSize - 5))}
+                disabled={batchSize === 'ALL'}
+              >
+                <Minus size={14} />
+              </button>
+              <input 
+                type="text" 
+                inputMode="numeric"
+                value={batchSize === 'ALL' ? '' : batchSize}
+                onChange={(e) => {
+                  if (e.target.value === '') return;
+                  const val = parseInt(e.target.value);
+                  if (!isNaN(val)) setBatchSize(val);
+                }}
+                disabled={batchSize === 'ALL'}
+                style={{ width: '45px', textAlign: 'center', background: 'transparent', border: 'none', color: batchSize === 'ALL' ? 'var(--text-secondary)' : 'var(--text-primary)', fontSize: '0.95rem', fontWeight: 600, outline: 'none' }}
+                placeholder={batchSize === 'ALL' ? 'ALL' : ''}
+              />
+              <button 
+                className="icon-btn"
+                style={{ padding: '6px 10px', borderRadius: 0, borderLeft: '1px solid rgba(255,255,255,0.05)' }}
+                onClick={() => batchSize !== 'ALL' && setBatchSize(batchSize + 5)}
+                disabled={batchSize === 'ALL'}
+              >
+                <Plus size={14} />
+              </button>
+            </div>
+            <button 
+              style={{ 
+                padding: '6px 10px', 
+                fontSize: '0.85rem', 
+                fontWeight: 600,
+                borderRadius: '10px',
+                background: batchSize === 'ALL' ? 'rgba(56, 189, 248, 0.2)' : 'rgba(0,0,0,0.3)',
+                color: batchSize === 'ALL' ? 'var(--accent-color)' : 'var(--text-secondary)',
+                border: `1px solid ${batchSize === 'ALL' ? 'var(--accent-color)' : 'transparent'}`,
+                cursor: 'pointer',
+                transition: 'all 0.2s'
+              }}
+              onClick={() => setBatchSize(batchSize === 'ALL' ? 20 : 'ALL')}
+            >
+              전체
+            </button>
+          </div>
+        </div>
+
+        {/* 순서 섞기 */}
+        <div className="setting-row">
+          <div className="setting-title">순서 섞기 (랜덤)</div>
+          <div className={`toggle-switch ${shuffle ? 'on' : ''}`} onClick={() => setShuffle(!shuffle)}>
+            <div className="toggle-nob" />
+          </div>
+        </div>
+
+        {/* 출제 대상 */}
+        <div className="setting-row">
+          <div className="setting-title">이미 외운 단어 포함</div>
+          <div className={`toggle-switch ${includeKnown ? 'on' : ''}`} onClick={() => setIncludeKnown(!includeKnown)}>
+            <div className="toggle-nob" />
+          </div>
+        </div>
+
+        {/* 학습 모드 */}
+        <div className="setting-row" style={{ marginBottom: '10px' }}>
+          <div className="setting-title">학습 모드</div>
+          <div className="segment-control">
+            <button onClick={() => setModeSelect('STUDY')} className={`segment-btn ${modeSelect === 'STUDY' ? 'active' : ''}`}>열람</button>
+            <button onClick={() => setModeSelect('TEST')} className={`segment-btn ${modeSelect === 'TEST' ? 'active' : ''}`}>테스트</button>
           </div>
         </div>
       </div>
 
-      <button className="btn-primary" onClick={handleStartSession} disabled={selectedLevels.length === 0}>
-        <Play size={20} style={{ verticalAlign: 'middle', marginRight: '5px' }} /> 
-        {modeSelect === 'STUDY' ? '열람 시작' : '테스트 시작'}
-      </button>
-
-      {/* Global Reset */}
-      {knownWords.length > 0 && (
-        <button 
-          className="icon-btn" 
-          onClick={() => {
-            if(window.confirm('모든 누적 학습 기록과 일일 통계를 초기화하시겠습니까?')) {
-              resetKnownData();
-            }
-          }}
-          style={{ marginTop: '30px', marginLeft: 'auto', marginRight: 'auto', color: 'var(--error-color)', display: 'flex', gap: '8px' }}
-        >
-          <RefreshCw size={18} /> 전체 누적기록 초기화 ({knownWords.length}단어)
+      <div className="main-action-area">
+        <button className="btn-start-hero" onClick={handleStartSession} disabled={selectedLevels.length === 0}>
+          <Play size={20} /> 
+          {modeSelect === 'STUDY' ? '단어 열람 시작' : '실전 테스트 시작'}
         </button>
-      )}
+      </div>
     </div>
   );
 
@@ -234,16 +274,58 @@ function App() {
       )}
 
       {sessionMode === 'STUDY' && (
-        <div className="stat-card">
-          <div className="stat-row" style={{ justifyContent: 'center' }}>
-            🎉 단어를 모두 한 번씩 훑어보셨군요!
+        <div className="stat-card" style={{ display: 'flex', flexDirection: 'column', gap: '15px', alignItems: 'center' }}>
+          <div style={{ textAlign: 'center', fontWeight: 'bold' }}>
+            🎉 단어를 모두 훑어보셨군요!
           </div>
+          <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', textAlign: 'center' }}>
+            방금 열람한 단어들을 그대로 넘겨받아 실력을 확인해볼 수 있습니다.
+          </div>
+          
+          <button 
+            className="btn-start-hero" 
+            style={{ 
+              background: 'rgba(56, 189, 248, 0.1)', 
+              color: 'var(--accent-color)',
+              boxShadow: 'none',
+              border: '1px solid rgba(56, 189, 248, 0.3)',
+              padding: '16px',
+              marginTop: '5px'
+            }} 
+            onClick={() => {
+              // 동일한 덱(sessionDeck)을 가져오되, 열람 순서와 테스트 순서가 똑같으면 너무 쉬우므로 다시 섞어서(Shuffle) 테스트 시작
+              const testDeck = [...sessionDeck].sort(() => Math.random() - 0.5);
+              startSession(testDeck, 'TEST');
+            }}
+          >
+            <Play size={20} /> 방금 본 {sessionDeck.length} 단어로 테스트하기
+          </button>
         </div>
       )}
 
-      <button className="btn-primary" onClick={endSession}>
-        홈으로 돌아가기
-      </button>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', width: '100%', maxWidth: '320px', marginTop: '10px' }}>
+        {sessionMode === 'TEST' && sessionStats.failed.length > 0 && (
+          <button 
+            className="btn-start-hero" 
+            style={{ 
+              background: 'rgba(239, 68, 68, 0.1)', 
+              color: 'var(--error-color)',
+              boxShadow: 'none',
+              border: '1px solid rgba(239, 68, 68, 0.3)',
+              padding: '18px'
+            }} 
+            onClick={() => {
+              // startSession resets state and starts a new session with the failed words array
+              startSession(sessionStats.failed, 'TEST');
+            }}
+          >
+            <XCircle size={20} /> 틀린 단어 방금 다시 하기 ({sessionStats.failed.length})
+          </button>
+        )}
+        <button className="btn-start-hero" onClick={endSession}>
+          홈으로 돌아가기
+        </button>
+      </div>
     </div>
   );
 
@@ -253,7 +335,7 @@ function App() {
     <div className="app-container">
       {/* Header during Session */}
       {isSessionActive && currentIndex < sessionDeck.length && (
-        <header className="header">
+        <header className="header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <button className="icon-btn" onClick={() => {
             if(window.confirm('현재 세션을 닫고 홈으로 가시겠습니까?')) endSession();
           }}>
@@ -264,8 +346,13 @@ function App() {
             {sessionMode === 'STUDY' ? '📖 열람 모드' : '📝 테스트 모드'}
           </div>
           
-          <div className="word-counter">
-            {currentIndex + 1} / {sessionDeck.length}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button className="icon-btn" onClick={shuffleSessionDeck} title="남은 단어 무작위로 섞기" style={{ padding: '4px' }}>
+              <Shuffle size={20} color="var(--accent-color)" />
+            </button>
+            <div className="word-counter" style={{ margin: 0 }}>
+              {currentIndex + 1} / {sessionDeck.length}
+            </div>
           </div>
         </header>
       )}
@@ -310,6 +397,8 @@ function App() {
           )
         )}
       </main>
+
+      {isWordListOpen && <WordListModal onClose={() => setIsWordListOpen(false)} />}
     </div>
   );
 }

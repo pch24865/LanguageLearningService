@@ -49,6 +49,7 @@ type StoreState = {
   goPrevInStudy: () => void;
   undoLastAnswer: () => void;
   endSession: () => void;
+  shuffleSessionDeck: () => void;
 };
 
 // Helper for pure YYYY-MM-DD
@@ -154,6 +155,12 @@ export const useStore = create<StoreState>()(
           knownWords: newKnown,
           dailyStats: { ...state.dailyStats, [today]: daily }
         };
+      }),
+
+      shuffleSessionDeck: () => set((state) => {
+        const past = state.sessionDeck.slice(0, state.currentIndex);
+        const future = [...state.sessionDeck.slice(state.currentIndex)].sort(() => Math.random() - 0.5);
+        return { sessionDeck: [...past, ...future] };
       }),
 
       goNextInStudy: () => set((state) => ({
