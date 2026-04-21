@@ -68,7 +68,21 @@ const Flashcard: React.FC<FlashcardProps> = ({ word, mode, isFirst, onNextTest, 
             </div>
 
             <div className="word-meaning">
-              {word.korean}
+              {word.pos && (
+                <span style={{ 
+                  display: 'inline-block', 
+                  fontSize: '0.8rem', 
+                  background: 'rgba(255,255,255,0.1)', 
+                  padding: '2px 8px', 
+                  borderRadius: '12px', 
+                  marginRight: '8px',
+                  verticalAlign: 'middle',
+                  color: 'var(--text-secondary)'
+                }}>
+                  {word.pos}
+                </span>
+              )}
+              <span style={{ verticalAlign: 'middle' }}>{word.korean}</span>
             </div>
 
             <div className="word-english" style={{ fontSize: '1.2rem', marginTop: '12px' }}>

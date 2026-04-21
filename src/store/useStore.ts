@@ -4,8 +4,9 @@ import { persist } from 'zustand/middleware';
 export interface Word {
   original: string;
   furigana: string;
-  english: string;
   korean: string;
+  pos?: string;
+  english?: string;
 }
 
 export interface SessionStats {
