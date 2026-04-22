@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { Menu, Flame, ChevronLeft, ChevronRight, XCircle, Play, Undo2 } from 'lucide-react';
+import { useState } from 'react';
+import { Menu, Flame, ChevronLeft, ChevronRight, XCircle, Undo2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import type { PanInfo } from 'framer-motion';
 import { useStore, type Word } from './store/useStore';
@@ -33,7 +33,7 @@ function App() {
   const [isWordListOpen, setIsWordListOpen] = useState(false);
 
   // Stack swipe logic: Swipe left to next, Swipe right to prev
-  const handleDragEnd = (event: any, info: PanInfo) => {
+  const handleDragEnd = (_: any, info: PanInfo) => {
     const swipeThreshold = 50;
     if (info.offset.x < -swipeThreshold) {
       if (activeCardIndex < LEVELS.length - 1) setActiveCardIndex(prev => prev + 1);
