@@ -1,12 +1,14 @@
-import { useState } from 'react';
-import { Settings, RefreshCw, XCircle, Play, Undo2, Flame, BookOpen, Plus, Minus, Shuffle } from 'lucide-react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Menu, Flame, ChevronLeft, ChevronRight, XCircle, Play, Undo2 } from 'lucide-react';
+import { motion } from 'framer-motion';
+import type { PanInfo } from 'framer-motion';
 import { useStore, type Word } from './store/useStore';
 import Flashcard from './components/Flashcard';
 import WordListModal from './components/WordListModal';
 import vocabDataRaw from './assets/vocab_data.json';
 
 const vocabData = vocabDataRaw as Record<string, Word[]>;
-const ALL_LEVELS = ['N5', 'N4', 'N3', 'N2', 'N1'];
+const LEVELS = ['N5', 'N4', 'N3', 'N2', 'N1'];
 
 function App() {
   const {
@@ -16,387 +18,419 @@ function App() {
     sessionMode,
     sessionStats,
     isSessionActive,
-    dailyGoal,
     currentStreak,
-    dailyStats,
     startSession,
     recordAnswer,
     goNextInStudy,
     goPrevInStudy,
     endSession,
-    resetKnownData,
     undoLastAnswer,
-    setDailyGoal,
-    shuffleSessionDeck
   } = useStore();
 
-  // Local Form State
-  const [selectedLevels, setSelectedLevels] = useState<string[]>(['N5']);
-  const [batchSize, setBatchSize] = useState<number | 'ALL'>(20);
-  const [includeKnown, setIncludeKnown] = useState<boolean>(false);
-  const [shuffle, setShuffle] = useState<boolean>(true);
-  const [modeSelect, setModeSelect] = useState<'STUDY' | 'TEST'>('STUDY');
-  const [isWordListOpen, setIsWordListOpen] = useState<boolean>(false);
+  const [selectedLevel, setSelectedLevel] = useState<string | null>(null);
+  const [goalAmount, setGoalAmount] = useState<number>(35);
+  const [activeCardIndex, setActiveCardIndex] = useState(3); // default N2 maybe?
+  const [isWordListOpen, setIsWordListOpen] = useState(false);
 
-  const todayStr = new Date().toLocaleDateString('en-CA');
-  const todayLearned = dailyStats[todayStr]?.learned || 0;
-  const progressPercent = Math.min((todayLearned / dailyGoal) * 100, 100);
+  // Stack swipe logic: Swipe left to next, Swipe right to prev
+  const handleDragEnd = (event: any, info: PanInfo) => {
+    const swipeThreshold = 50;
+    if (info.offset.x < -swipeThreshold) {
+      if (activeCardIndex < LEVELS.length - 1) setActiveCardIndex(prev => prev + 1);
+    } else if (info.offset.x > swipeThreshold) {
+      if (activeCardIndex > 0) setActiveCardIndex(prev => prev - 1);
+    }
+  };
 
-  // Handlers for Form
-  const toggleLevel = (level: string) => {
-    setSelectedLevels(prev => 
-      prev.includes(level) 
-        ? prev.filter(l => l !== level) 
-        : [...prev, level]
+  // Stats computation
+  const getLevelStats = (lvl: string) => {
+    const list = vocabData[lvl] || [];
+    const total = list.length;
+    // Count kanji by checking if furigana differs from original AND kanji existed (which means original has kanji)
+    // Quick heuristic: length of words with kanji
+    const totalKanji = list.filter(w => w.furigana !== '').length;
+
+    const knownInLevel = list.filter(w => knownWords.includes(w.original)).length;
+    return { total, totalKanji, known: knownInLevel };
+  };
+
+  const handleStartSession = (lvl: string, type: 'ALL' | 'NEW' | 'REVIEW' = 'ALL') => {
+    const list = vocabData[lvl] || [];
+    let newWords = list.filter(w => !knownWords.includes(w.original));
+    let reviewWords = list.filter(w => knownWords.includes(w.original));
+
+    newWords = newWords.sort(() => Math.random() - 0.5);
+    reviewWords = reviewWords.sort(() => Math.random() - 0.5);
+
+    let pool: Word[] = [];
+    if (type === 'NEW') {
+      pool = newWords.slice(0, goalAmount);
+      if (pool.length === 0) alert('새로운 단어가 부족합니다. (모두 학습했거나 설정량이 너무 적음)');
+    } else if (type === 'REVIEW') {
+      pool = reviewWords.slice(0, goalAmount);
+      if (pool.length === 0) alert('복습할 단어가 아직 없습니다.');
+    } else {
+      // ALL: Smart Balanced Mix (70% New, 30% Review)
+      const reviewTarget = Math.ceil(goalAmount * 0.3);
+      const newTarget = goalAmount - reviewTarget;
+
+      const pickedNew = newWords.slice(0, newTarget);
+      const pickedReview = reviewWords.slice(0, reviewTarget);
+      
+      pool = [...pickedNew, ...pickedReview];
+
+      // Fill remaining spots if one pool was too small
+      if (pool.length < goalAmount) {
+        const remaining = goalAmount - pool.length;
+        if (pickedNew.length < newTarget) {
+          // Add more review if new is exhausted
+          pool = [...pool, ...reviewWords.slice(reviewTarget, reviewTarget + remaining)];
+        } else {
+          // Add more new if review is exhausted
+          pool = [...pool, ...newWords.slice(newTarget, newTarget + remaining)];
+        }
+      }
+    }
+
+    if (pool.length === 0) {
+      if (type === 'ALL') {
+        pool = list.slice(0, goalAmount);
+        if (pool.length === 0) return;
+      } else {
+        return;
+      }
+    }
+
+    // Always start TEST mode (can toggle later if needed)
+    startSession(pool, 'TEST');
+  };
+
+  // Component: Home Swiper
+  const renderHomeView = () => (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <header className="header-light">
+        <button className="icon-btn" style={{ marginLeft: '-10px' }}><Menu size={24} /></button>
+        <span className="title-main">JLPT Plus</span>
+        <div style={{ width: 24 }} />
+      </header>
+
+      <div className="streak-pill">
+        <Flame size={18} fill="currentColor" /> {currentStreak}
+      </div>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+        <div style={{
+          flex: 1,
+          position: 'relative',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          paddingTop: '20px',
+          perspective: '1200px'
+        }}>
+          {LEVELS.map((lvl, index) => {
+            const stats = getLevelStats(lvl);
+            const isSelected = activeCardIndex === index;
+            const diff = index - activeCardIndex;
+
+            return (
+              <motion.div
+                key={lvl}
+                drag={isSelected ? "x" : false}
+                dragConstraints={{ left: 0, right: 0 }}
+                onDragEnd={handleDragEnd}
+                animate={{
+                  scale: isSelected ? 1 : (diff > 0 ? 1 - diff * 0.08 : 0.9),
+                  x: diff < 0 ? -450 : (diff > 0 ? diff * 10 : 0),
+                  y: diff > 0 ? diff * 20 : 0,
+                  opacity: diff < 0 ? 0 : (1 - diff * 0.35),
+                  rotateY: diff > 0 ? diff * -12 : 0,
+                  rotate: diff < 0 ? -15 : 0,
+                  zIndex: LEVELS.length - index,
+                }}
+                transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                style={{
+                  position: 'absolute',
+                  width: '85%',
+                  maxWidth: '350px',
+                  height: '440px',
+                  cursor: isSelected ? 'grab' : 'pointer',
+                }}
+                onClick={() => isSelected ? setSelectedLevel(lvl) : setActiveCardIndex(index)}
+              >
+                <div
+                  className="level-card"
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    margin: 0,
+                    boxShadow: isSelected ? '0 50px 100px rgba(0,0,0,0.12)' : '0 10px 30px rgba(0,0,0,0.06)',
+                    background: '#ffffff',
+                    border: 'none',
+                    borderRadius: '36px'
+                  }}
+                >
+                  {/* Premium Studio Graphics (Simple but Not Boring) */}
+                  <div className="poster-bg-decoration">
+                    <div className="poster-noise" />
+                    <div className="poster-dot-grid" />
+                    <div className="poster-glass-shine" />
+                  </div>
+
+                <div style={{
+                  position: 'relative',
+                  zIndex: 2,
+                  height: '100%',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'center',
+                  alignItems: 'center'
+                }}>
+                  <div className="level-title-poster" style={{
+                    color: lvl === 'N1' ? '#1e40af' : lvl === 'N5' ? '#0ea5e9' : lvl === 'N4' ? '#d97706' : lvl === 'N3' ? '#db2777' : '#6d28d9'
+                  }}>{lvl}</div>
+                </div>
+
+                  <div className="poster-footer-stats">
+                    <div style={{ flex: 1 }}>
+                      <div className="poster-badge-item">VOCABULARY</div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div className="poster-badge-item" style={{ color: '#000', marginBottom: '2px' }}>{stats.total} WORDS</div>
+                      <div className="poster-badge-item" style={{ fontSize: '0.6rem', opacity: 0.5 }}>{stats.totalKanji} KANJI</div>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            );
+          })}
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginBottom: '60px' }}>
+          {LEVELS.map((_, i) => (
+            <motion.div
+              key={i}
+              animate={{
+                width: i === activeCardIndex ? 28 : 8,
+                backgroundColor: i === activeCardIndex ? 'var(--accent-color)' : 'var(--card-border)',
+                opacity: i === activeCardIndex ? 1 : 0.5
+              }}
+              transition={{ type: "spring", stiffness: 300, damping: 20 }}
+              style={{ height: 8, borderRadius: 4 }}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+
+  // Component: Detail View
+  const renderDetailView = (lvl: string) => {
+    const stats = getLevelStats(lvl);
+    const percent = Math.round((stats.known / (stats.total || 1)) * 100);
+
+    // Calculate how many words we can actually study
+    const newWordsLeft = stats.total - stats.known;
+    const todayNew = Math.min(newWordsLeft, goalAmount);
+    
+    // Review words available for a standalone review session
+    const todayReview = Math.min(stats.known, goalAmount);
+
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', position: 'relative' }}>
+        <div className="detail-bg" />
+
+        <header className="header-light">
+          <button className="icon-btn" onClick={() => setSelectedLevel(null)} style={{ marginLeft: '-10px' }}>
+            <ChevronLeft size={28} />
+          </button>
+          <span className="title-main">{lvl} 단어</span>
+          <span style={{ fontSize: '0.9rem', color: 'var(--accent-color)', fontWeight: 700, marginRight: '5px' }}>한자</span>
+        </header>
+
+        <div className="detail-content">
+          <div className="study-card">
+            <div className="study-card-title">자동 학습</div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>목표 학습량</span>
+                <select
+                  value={goalAmount}
+                  onChange={(e) => setGoalAmount(Number(e.target.value))}
+                  style={{
+                    padding: '8px 12px', border: '1px solid var(--card-border)', borderRadius: '12px',
+                    fontSize: '1.05rem', fontWeight: 600, color: 'var(--text-primary)', outline: 'none', background: 'transparent'
+                  }}
+                >
+                  <option value={10}>10개</option>
+                  <option value={20}>20개</option>
+                  <option value={35}>35개</option>
+                  <option value={50}>50개</option>
+                </select>
+              </div>
+
+              <div className="progress-circle-wrap">
+                <svg viewBox="0 0 36 36" className="circular-chart" style={{ width: '100%', height: '100%' }}>
+                  <path className="circle-bg"
+                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                  />
+                  <path className="circle"
+                    strokeDasharray={`${percent}, 100`}
+                    stroke="var(--accent-color)"
+                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                  />
+                  <text x="18" y="16.5" className="percentage">{percent}%</text>
+                  <text x="18" y="24" className="percentage-sub">{stats.known}/{stats.total}</text>
+                </svg>
+              </div>
+            </div>
+
+            <div
+              className="row-item"
+              style={{ cursor: 'pointer' }}
+              onClick={() => handleStartSession(lvl, 'NEW')}
+            >
+              <span>새 단어 (단독 테스트)</span>
+              <span className="val">{todayNew} <ChevronRight size={18} color="var(--text-muted)" /></span>
+            </div>
+            <div
+              className="row-item"
+              style={{ border: 'none', cursor: 'pointer' }}
+              onClick={() => handleStartSession(lvl, 'REVIEW')}
+            >
+              <span>복습 단어 (단독 테스트)</span>
+              <span className="val">{todayReview} <ChevronRight size={18} color="var(--text-muted)" /></span>
+            </div>
+
+            <button className="big-btn-dark" onClick={() => handleStartSession(lvl, 'ALL')}>
+              자동 학습 (섞어서 시작)
+            </button>
+          </div>
+
+          <div className="info-section">
+            <div className="info-header" style={{ cursor: 'pointer' }} onClick={() => setIsWordListOpen(true)}>
+              <span className="info-title">{lvl} 학습 정보</span>
+              <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}>
+                모든 단어 <ChevronRight size={16} />
+              </span>
+            </div>
+
+            <div className="mini-row">
+              <span style={{ fontSize: '0.95rem', color: 'var(--text-secondary)' }}>모든 단어 암기율</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{stats.known}/{stats.total}</span>
+                <div style={{ width: 40, height: 6, background: 'var(--card-border)', borderRadius: 4 }}>
+                  <div style={{ width: `${percent}%`, height: '100%', background: 'var(--accent-color)', borderRadius: 4 }} />
+                </div>
+              </div>
+            </div>
+            <div className="mini-row">
+              <span style={{ fontSize: '0.95rem', color: 'var(--text-secondary)' }}>오늘의 학습 진도율 (목표량 대비)</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{todayReview}/{goalAmount}</span>
+                <div style={{ width: 40, height: 6, background: 'var(--card-border)', borderRadius: 4 }}>
+                  <div style={{ width: `${Math.min(100, Math.round((todayReview / goalAmount) * 100))}%`, height: '100%', background: 'var(--accent-color)', borderRadius: 4 }} />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     );
   };
 
-  const handleStartSession = () => {
-    if (selectedLevels.length === 0) {
-      alert('최소 1개 이상의 급수를 선택해주세요.');
-      return;
-    }
-
-    let pool: Word[] = [];
-    selectedLevels.forEach(lvl => {
-      let words = vocabData[lvl] || [];
-      if (!includeKnown) {
-        words = words.filter(w => !knownWords.includes(w.original));
-      }
-      pool = [...pool, ...words];
-    });
-
-    if (pool.length === 0) {
-      alert('조건에 맞는 단어가 없습니다! (모두 외운 단어일 수도 있습니다.)');
-      return;
-    }
-
-    if (shuffle) pool = [...pool].sort(() => Math.random() - 0.5);
-    if (batchSize !== 'ALL') pool = pool.slice(0, batchSize as number);
-
-    startSession(pool, modeSelect);
-  };
-
-  const handleNextTest = (knewIt: boolean) => recordAnswer(sessionDeck[currentIndex], knewIt);
-  
-  const handleEditGoal = () => {
-    const res = prompt('하루 목표 단어 수를 입력하세요:', dailyGoal.toString());
-    if (res && !isNaN(Number(res))) setDailyGoal(Number(res));
-  };
-
-  const renderDashboard = () => (
-    <div className="compact-dashboard">
-      <div className="dashboard-header-compact">
-        <span style={{ color: 'var(--text-primary)' }}>오늘의 학습 🎯</span>
-        {currentStreak > 0 && (
-          <div className="streak-badge">
-            <Flame size={14} /> {currentStreak}일째
-          </div>
-        )}
-      </div>
-
-      <div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '5px' }}>
-          <span style={{ fontSize: '1.2rem', fontWeight: 800 }}>
-            {todayLearned} <span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>/ {dailyGoal} 단어</span>
-          </span>
-          <button className="icon-btn" onClick={handleEditGoal} style={{ padding: '0px' }}>
-            <Settings size={16} />
-          </button>
-        </div>
-        
-        <div className="progress-container">
-          <div className="progress-fill" style={{ width: `${progressPercent}%` }} />
-        </div>
-        
-        <div className="dashboard-stats" style={{ marginTop: '6px' }}>
-          <span>누적 {knownWords.length}단어</span>
-          <span>복습 {dailyStats[todayStr]?.reviewed || 0}단어</span>
-        </div>
-      </div>
-    </div>
-  );
-
-  const renderHomeForm = () => (
-    <div className="home-layout">
-      
-      <div className="home-top-bar">
-        <button className="icon-btn" onClick={() => setIsWordListOpen(true)} title="나의 단어장">
-          <BookOpen size={20} color="var(--accent-color)" />
-        </button>
-        {knownWords.length > 0 && (
-          <button 
-            className="icon-btn" 
-            onClick={() => {
-              if(window.confirm('모든 누적 학습 기록과 일일 통계를 초기화하시겠습니까?')) {
-                resetKnownData();
-              }
-            }}
-            title="초기화"
-          >
-            <RefreshCw size={18} color="var(--error-color)" />
-          </button>
-        )}
-      </div>
-
-      {renderDashboard()}
-
-      <div className="settings-list">
-        {/* 출제 급수 (다중선택) */}
-        <div style={{ padding: '0 5px', marginBottom: '8px' }}>
-          <div className="setting-title" style={{ paddingLeft: '5px', marginBottom: '10px' }}>출제 급수</div>
-          <div className="level-pills">
-            {ALL_LEVELS.map(lvl => (
-              <button
-                key={lvl}
-                onClick={() => toggleLevel(lvl)}
-                className={`level-pill ${selectedLevels.includes(lvl) ? 'active' : ''}`}
-              >
-                {lvl}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* 가져올 개수 */}
-        <div className="setting-row">
-          <div className="setting-title">가져올 개수</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', background: 'rgba(0,0,0,0.3)', borderRadius: '10px', overflow: 'hidden' }}>
-              <button 
-                className="icon-btn"
-                style={{ padding: '6px 10px', borderRadius: 0, borderRight: '1px solid rgba(255,255,255,0.05)' }}
-                onClick={() => batchSize !== 'ALL' && setBatchSize(Math.max(5, batchSize - 5))}
-                disabled={batchSize === 'ALL'}
-              >
-                <Minus size={14} />
-              </button>
-              <input 
-                type="text" 
-                inputMode="numeric"
-                value={batchSize === 'ALL' ? '' : batchSize}
-                onChange={(e) => {
-                  if (e.target.value === '') return;
-                  const val = parseInt(e.target.value);
-                  if (!isNaN(val)) setBatchSize(val);
-                }}
-                disabled={batchSize === 'ALL'}
-                style={{ width: '45px', textAlign: 'center', background: 'transparent', border: 'none', color: batchSize === 'ALL' ? 'var(--text-secondary)' : 'var(--text-primary)', fontSize: '0.95rem', fontWeight: 600, outline: 'none' }}
-                placeholder={batchSize === 'ALL' ? 'ALL' : ''}
-              />
-              <button 
-                className="icon-btn"
-                style={{ padding: '6px 10px', borderRadius: 0, borderLeft: '1px solid rgba(255,255,255,0.05)' }}
-                onClick={() => batchSize !== 'ALL' && setBatchSize(batchSize + 5)}
-                disabled={batchSize === 'ALL'}
-              >
-                <Plus size={14} />
-              </button>
-            </div>
-            <button 
-              style={{ 
-                padding: '6px 10px', 
-                fontSize: '0.85rem', 
-                fontWeight: 600,
-                borderRadius: '10px',
-                background: batchSize === 'ALL' ? 'rgba(56, 189, 248, 0.2)' : 'rgba(0,0,0,0.3)',
-                color: batchSize === 'ALL' ? 'var(--accent-color)' : 'var(--text-secondary)',
-                border: `1px solid ${batchSize === 'ALL' ? 'var(--accent-color)' : 'transparent'}`,
-                cursor: 'pointer',
-                transition: 'all 0.2s'
-              }}
-              onClick={() => setBatchSize(batchSize === 'ALL' ? 20 : 'ALL')}
-            >
-              전체
-            </button>
-          </div>
-        </div>
-
-        {/* 순서 섞기 */}
-        <div className="setting-row">
-          <div className="setting-title">순서 섞기 (랜덤)</div>
-          <div className={`toggle-switch ${shuffle ? 'on' : ''}`} onClick={() => setShuffle(!shuffle)}>
-            <div className="toggle-nob" />
-          </div>
-        </div>
-
-        {/* 출제 대상 */}
-        <div className="setting-row">
-          <div className="setting-title">이미 외운 단어 포함</div>
-          <div className={`toggle-switch ${includeKnown ? 'on' : ''}`} onClick={() => setIncludeKnown(!includeKnown)}>
-            <div className="toggle-nob" />
-          </div>
-        </div>
-
-        {/* 학습 모드 */}
-        <div className="setting-row" style={{ marginBottom: '10px' }}>
-          <div className="setting-title">학습 모드</div>
-          <div className="segment-control">
-            <button onClick={() => setModeSelect('STUDY')} className={`segment-btn ${modeSelect === 'STUDY' ? 'active' : ''}`}>열람</button>
-            <button onClick={() => setModeSelect('TEST')} className={`segment-btn ${modeSelect === 'TEST' ? 'active' : ''}`}>테스트</button>
-          </div>
-        </div>
-      </div>
-
-      <div className="main-action-area">
-        <button className="btn-start-hero" onClick={handleStartSession} disabled={selectedLevels.length === 0}>
-          <Play size={20} /> 
-          {modeSelect === 'STUDY' ? '단어 열람 시작' : '실전 테스트 시작'}
-        </button>
-      </div>
-    </div>
-  );
-
   const renderSessionSummary = () => (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
-      <h2 style={{ fontSize: '2rem', marginBottom: '10px' }}>학습 완료! 🎉</h2>
+    <div style={{ padding: '40px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', height: '100%' }}>
+      <h2 style={{ fontSize: '2rem', marginBottom: '10px', color: 'var(--text-primary)' }}>학습 완료! 🎉</h2>
       <p style={{ color: 'var(--text-secondary)', marginBottom: '30px' }}>이번 세션의 결과입니다.</p>
-      
-      {sessionMode === 'TEST' && (
-        <div className="stat-card">
-          <div className="stat-row">
-            <span>총 학습:</span>
-            <span style={{ fontWeight: 800 }}>{sessionDeck.length}개</span>
-          </div>
-          <div className="stat-row" style={{ color: 'var(--success-color)' }}>
-            <span>알아요:</span>
-            <span style={{ fontWeight: 800 }}>{sessionStats.passed.length}개</span>
-          </div>
-          <div className="stat-row" style={{ color: 'var(--error-color)' }}>
-            <span>몰라요:</span>
-            <span style={{ fontWeight: 800 }}>{sessionStats.failed.length}개</span>
-          </div>
-          
-          <div style={{ marginTop: '20px', paddingTop: '20px', borderTop: '1px solid var(--card-border)', fontSize: '0.95rem', color: 'var(--text-secondary)' }}>
-            정답률: {Math.round((sessionStats.passed.length / sessionDeck.length) * 100)}%
-          </div>
-        </div>
-      )}
 
-      {sessionMode === 'STUDY' && (
-        <div className="stat-card" style={{ display: 'flex', flexDirection: 'column', gap: '15px', alignItems: 'center' }}>
-          <div style={{ textAlign: 'center', fontWeight: 'bold' }}>
-            🎉 단어를 모두 훑어보셨군요!
-          </div>
-          <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', textAlign: 'center' }}>
-            방금 열람한 단어들을 그대로 넘겨받아 실력을 확인해볼 수 있습니다.
-          </div>
-          
-          <button 
-            className="btn-start-hero" 
-            style={{ 
-              background: 'rgba(56, 189, 248, 0.1)', 
-              color: 'var(--accent-color)',
-              boxShadow: 'none',
-              border: '1px solid rgba(56, 189, 248, 0.3)',
-              padding: '16px',
-              marginTop: '5px'
-            }} 
-            onClick={() => {
-              // 동일한 덱(sessionDeck)을 가져오되, 열람 순서와 테스트 순서가 똑같으면 너무 쉬우므로 다시 섞어서(Shuffle) 테스트 시작
-              const testDeck = [...sessionDeck].sort(() => Math.random() - 0.5);
-              startSession(testDeck, 'TEST');
-            }}
-          >
-            <Play size={20} /> 방금 본 {sessionDeck.length} 단어로 테스트하기
-          </button>
+      <div className="study-card" style={{ width: '100%' }}>
+        <div className="row-item">
+          <span>총 학습:</span>
+          <span className="val">{sessionDeck.length}개</span>
         </div>
-      )}
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', width: '100%', maxWidth: '320px', marginTop: '10px' }}>
-        {sessionMode === 'TEST' && sessionStats.failed.length > 0 && (
-          <button 
-            className="btn-start-hero" 
-            style={{ 
-              background: 'rgba(239, 68, 68, 0.1)', 
-              color: 'var(--error-color)',
-              boxShadow: 'none',
-              border: '1px solid rgba(239, 68, 68, 0.3)',
-              padding: '18px'
-            }} 
-            onClick={() => {
-              // startSession resets state and starts a new session with the failed words array
-              startSession(sessionStats.failed, 'TEST');
-            }}
-          >
-            <XCircle size={20} /> 틀린 단어 방금 다시 하기 ({sessionStats.failed.length})
-          </button>
-        )}
-        <button className="btn-start-hero" onClick={endSession}>
-          홈으로 돌아가기
-        </button>
+        <div className="row-item">
+          <span style={{ color: 'var(--success-color)' }}>알아요:</span>
+          <span className="val">{sessionStats.passed.length}개</span>
+        </div>
+        <div className="row-item" style={{ border: 'none' }}>
+          <span style={{ color: 'var(--error-color)' }}>몰라요:</span>
+          <span className="val">{sessionStats.failed.length}개</span>
+        </div>
       </div>
+
+      <div style={{ flex: 1 }} />
+
+      {sessionStats.failed.length > 0 && (
+        <button
+          className="big-btn-dark"
+          style={{ background: '#fef2f2', color: '#ef4444', border: '1px solid #fecaca', marginBottom: '10px' }}
+          onClick={() => startSession(sessionStats.failed, 'TEST')}
+        >
+          틀린 단어 방금 다시 하기 ({sessionStats.failed.length})
+        </button>
+      )}
+      <button className="big-btn-dark" onClick={endSession}>
+        종료
+      </button>
     </div>
   );
 
   const activeWord = sessionDeck[currentIndex];
-  
+
   return (
     <div className="app-container">
-      {/* Header during Session */}
-      {isSessionActive && currentIndex < sessionDeck.length && (
-        <header className="header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <button className="icon-btn" onClick={() => {
-            if(window.confirm('현재 세션을 닫고 홈으로 가시겠습니까?')) endSession();
-          }}>
-            <XCircle size={24} />
-          </button>
-          
-          <div className="header-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            {sessionMode === 'STUDY' ? '📖 열람 모드' : '📝 테스트 모드'}
-          </div>
-          
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <button className="icon-btn" onClick={shuffleSessionDeck} title="남은 단어 무작위로 섞기" style={{ padding: '4px' }}>
-              <Shuffle size={20} color="var(--accent-color)" />
-            </button>
-            <div className="word-counter" style={{ margin: 0 }}>
-              {currentIndex + 1} / {sessionDeck.length}
+      {/* Active Session Output */}
+      {isSessionActive ? (
+        currentIndex < sessionDeck.length ? (
+          <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+            <header className="header-light">
+              <button className="icon-btn" onClick={() => {
+                if (window.confirm('세션을 종료하시겠습니까?')) endSession();
+              }}>
+                <XCircle size={26} color="var(--text-secondary)" />
+              </button>
+              <div style={{ fontWeight: 700, fontSize: '1rem' }}>
+                {currentIndex + 1} / {sessionDeck.length}
+              </div>
+              <div style={{ width: 26 }} />
+            </header>
+
+            <div style={{ flex: 1, padding: '0 20px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+              <Flashcard
+                key={activeWord.original}
+                word={activeWord}
+                mode={sessionMode}
+                isFirst={currentIndex === 0}
+                onNextTest={(knew) => recordAnswer(activeWord, knew)}
+                onNextStudy={goNextInStudy}
+                onPrevStudy={goPrevInStudy}
+              />
+
+              {sessionMode === 'TEST' && (
+                <button
+                  onClick={undoLastAnswer}
+                  disabled={currentIndex === 0}
+                  style={{
+                    marginTop: '30px',
+                    background: 'none', border: 'none',
+                    color: currentIndex === 0 ? 'transparent' : 'var(--text-secondary)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                    fontSize: '0.9rem', fontWeight: 600, cursor: 'pointer'
+                  }}
+                >
+                  <Undo2 size={18} /> 이전 취소
+                </button>
+              )}
             </div>
           </div>
-        </header>
-      )}
-
-      <main className="content-area">
-        {!isSessionActive ? (
-           renderHomeForm()
         ) : (
-          currentIndex < sessionDeck.length ? (
-             <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '5px' }}>
-               <Flashcard 
-                 key={activeWord.original} 
-                 word={activeWord} 
-                 mode={sessionMode}
-                 isFirst={currentIndex === 0}
-                 onNextTest={handleNextTest} 
-                 onNextStudy={goNextInStudy}
-                 onPrevStudy={goPrevInStudy}
-               />
-               
-               {sessionMode === 'TEST' && (
-                 <button 
-                   className="icon-btn" 
-                   onClick={undoLastAnswer}
-                   disabled={currentIndex === 0}
-                   style={{ 
-                     opacity: currentIndex === 0 ? 0 : 1,
-                     pointerEvents: currentIndex === 0 ? 'none' : 'auto',
-                     margin: '10px auto 0', 
-                     display: 'flex', 
-                     alignItems: 'center', 
-                     gap: '8px', 
-                     color: 'var(--text-secondary)' 
-                   }}
-                 >
-                   <Undo2 size={20} /> 이전 카드 채점 취소하기
-                 </button>
-               )}
-             </div>
-          ) : (
-             renderSessionSummary()
-          )
-        )}
-      </main>
+          renderSessionSummary()
+        )
+      ) : (
+        /* Not actively studying */
+        selectedLevel ? renderDetailView(selectedLevel) : renderHomeView()
+      )}
 
       {isWordListOpen && <WordListModal onClose={() => setIsWordListOpen(false)} />}
     </div>

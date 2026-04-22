@@ -72,12 +72,13 @@ const Flashcard: React.FC<FlashcardProps> = ({ word, mode, isFirst, onNextTest, 
                 <span style={{ 
                   display: 'inline-block', 
                   fontSize: '0.8rem', 
-                  background: 'rgba(255,255,255,0.1)', 
-                  padding: '2px 8px', 
+                  background: 'rgba(99, 102, 241, 0.1)', 
+                  padding: '4px 10px', 
                   borderRadius: '12px', 
                   marginRight: '8px',
                   verticalAlign: 'middle',
-                  color: 'var(--text-secondary)'
+                  color: 'var(--accent-color)',
+                  fontWeight: 600
                 }}>
                   {word.pos}
                 </span>
