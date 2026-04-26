@@ -1,14 +1,117 @@
 import { useState } from 'react';
-import { Menu, Flame, ChevronLeft, ChevronRight, XCircle, Undo2 } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { Menu, Flame, ChevronLeft, ChevronRight, XCircle, Undo2, X, Check } from 'lucide-react';
+import { motion, useMotionValue, useTransform, AnimatePresence } from 'framer-motion';
 import type { PanInfo } from 'framer-motion';
 import { useStore, type Word } from './store/useStore';
 import Flashcard from './components/Flashcard';
 import WordListModal from './components/WordListModal';
 import vocabDataRaw from './assets/vocab_data.json';
+import { kanaGroups, KANA_LEVELS } from './assets/kana';
 
 const vocabData = vocabDataRaw as Record<string, Word[]>;
 const LEVELS = ['N5', 'N4', 'N3', 'N2', 'N1'];
+
+const ModeSelectionSidebar = ({ onClose, currentMode, onSelectMode }: { onClose: () => void, currentMode: string, onSelectMode: (m: 'JLPT' | 'KANA') => void }) => {
+  return (
+    <>
+      {/* Backdrop */}
+      <motion.div
+        className="modal-overlay"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        style={{ zIndex: 998, position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)' }}
+        onClick={onClose}
+      />
+
+      {/* Sidebar Panel */}
+      <motion.div
+        initial={{ x: '-100%' }}
+        animate={{ x: 0 }}
+        exit={{ x: '-100%' }}
+        transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+        style={{
+          position: 'fixed', top: 0, left: 0, bottom: 0, width: '280px',
+          background: 'var(--bg-color)', zIndex: 999,
+          boxShadow: '4px 0 24px rgba(0,0,0,0.1)',
+          padding: '40px 20px',
+          display: 'flex', flexDirection: 'column'
+        }}
+      >
+        <button className="icon-btn" style={{ alignSelf: 'flex-end', marginBottom: '20px' }} onClick={onClose}><X size={26} color="var(--text-primary)" /></button>
+        <h2 style={{ fontSize: '1.4rem', marginBottom: '30px', fontWeight: 700 }}>어떤 학습을 할까요?</h2>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+          <button
+            className="big-btn-dark"
+            style={{
+              background: currentMode === 'JLPT' ? 'var(--accent-color)' : 'var(--card-bg)',
+              color: currentMode === 'JLPT' ? '#fff' : 'var(--text-primary)',
+              border: currentMode === 'JLPT' ? 'none' : '2px solid var(--card-border)',
+              display: 'flex', justifyContent: 'flex-start', paddingLeft: '20px', gap: '15px'
+            }}
+            onClick={() => { onSelectMode('JLPT'); onClose(); }}
+          >
+            <span>🇯🇵</span> JLPT 단어 학습
+          </button>
+          <button
+            className="big-btn-dark"
+            style={{
+              background: currentMode === 'KANA' ? 'var(--accent-color)' : 'var(--card-bg)',
+              color: currentMode === 'KANA' ? '#fff' : 'var(--text-primary)',
+              border: currentMode === 'KANA' ? 'none' : '2px solid var(--card-border)',
+              display: 'flex', justifyContent: 'flex-start', paddingLeft: '20px', gap: '15px'
+            }}
+            onClick={() => { onSelectMode('KANA'); onClose(); }}
+          >
+            <span style={{ fontWeight: 800 }}>あ</span> 가나 연습
+          </button>
+        </div>
+      </motion.div>
+    </>
+  );
+};
+
+const DeckCard = ({ word, mode, isTopCard, relIndex, recordAnswer, isKanaMode }: any) => {
+  const x = useMotionValue(0);
+  const colorOverlay = useTransform(
+    x,
+    [-120, 0, 120],
+    ['rgba(239, 68, 68, 0.4)', 'rgba(0, 0, 0, 0)', 'rgba(34, 197, 94, 0.4)']
+  );
+
+  return (
+    <motion.div
+      style={{ position: 'absolute', width: '100%', top: 0, left: 0, x }}
+      animate={{
+        scale: 1 - relIndex * 0.05,
+        y: relIndex * 20,
+        zIndex: 3 - relIndex,
+        opacity: 1 - relIndex * 0.3
+      }}
+      drag={isTopCard && mode === 'TEST' ? "x" : false}
+      dragConstraints={{ left: 0, right: 0 }}
+      onDragEnd={(_, info) => {
+        if (!isTopCard || mode !== 'TEST') return;
+        const threshold = 80;
+        if (info.offset.x > threshold) {
+          recordAnswer(word, true);
+        } else if (info.offset.x < -threshold) {
+          recordAnswer(word, false);
+        }
+      }}
+      transition={{ type: "spring", stiffness: 300, damping: 25 }}
+    >
+      <div style={{ position: 'relative', width: '100%' }}>
+        <Flashcard
+          word={word}
+          overlayColor={colorOverlay}
+          isKanaMode={isKanaMode}
+        />
+      </div>
+    </motion.div>
+  );
+};
 
 function App() {
   const {
@@ -29,14 +132,20 @@ function App() {
 
   const [selectedLevel, setSelectedLevel] = useState<string | null>(null);
   const [goalAmount, setGoalAmount] = useState<number>(35);
-  const [activeCardIndex, setActiveCardIndex] = useState(3); // default N2 maybe?
+  const [mixRatio, setMixRatio] = useState<number>(70);
+  const [activeCardIndex, setActiveCardIndex] = useState(0);
   const [isWordListOpen, setIsWordListOpen] = useState(false);
+  const [isModeSelectorOpen, setIsModeSelectorOpen] = useState(false);
+  const [appMode, setAppMode] = useState<'JLPT' | 'KANA'>('JLPT');
+
+  const currentLevels = appMode === 'JLPT' ? LEVELS : KANA_LEVELS;
+  const currentData = appMode === 'JLPT' ? vocabData : kanaGroups as Record<string, Word[]>;
 
   // Stack swipe logic: Swipe left to next, Swipe right to prev
   const handleDragEnd = (_: any, info: PanInfo) => {
     const swipeThreshold = 50;
     if (info.offset.x < -swipeThreshold) {
-      if (activeCardIndex < LEVELS.length - 1) setActiveCardIndex(prev => prev + 1);
+      if (activeCardIndex < currentLevels.length - 1) setActiveCardIndex(prev => prev + 1);
     } else if (info.offset.x > swipeThreshold) {
       if (activeCardIndex > 0) setActiveCardIndex(prev => prev - 1);
     }
@@ -44,7 +153,7 @@ function App() {
 
   // Stats computation
   const getLevelStats = (lvl: string) => {
-    const list = vocabData[lvl] || [];
+    const list = currentData[lvl] || [];
     const total = list.length;
     // Count kanji by checking if furigana differs from original AND kanji existed (which means original has kanji)
     // Quick heuristic: length of words with kanji
@@ -54,8 +163,8 @@ function App() {
     return { total, totalKanji, known: knownInLevel };
   };
 
-  const handleStartSession = (lvl: string, type: 'ALL' | 'NEW' | 'REVIEW' = 'ALL') => {
-    const list = vocabData[lvl] || [];
+  const handleStartSession = (lvl: string) => {
+    const list = currentData[lvl] || [];
     let newWords = list.filter(w => !knownWords.includes(w.original));
     let reviewWords = list.filter(w => knownWords.includes(w.original));
 
@@ -63,45 +172,37 @@ function App() {
     reviewWords = reviewWords.sort(() => Math.random() - 0.5);
 
     let pool: Word[] = [];
-    if (type === 'NEW') {
-      pool = newWords.slice(0, goalAmount);
-      if (pool.length === 0) alert('새로운 단어가 부족합니다. (모두 학습했거나 설정량이 너무 적음)');
-    } else if (type === 'REVIEW') {
-      pool = reviewWords.slice(0, goalAmount);
-      if (pool.length === 0) alert('복습할 단어가 아직 없습니다.');
-    } else {
-      // ALL: Smart Balanced Mix (70% New, 30% Review)
-      const reviewTarget = Math.ceil(goalAmount * 0.3);
-      const newTarget = goalAmount - reviewTarget;
 
-      const pickedNew = newWords.slice(0, newTarget);
-      const pickedReview = reviewWords.slice(0, reviewTarget);
-      
-      pool = [...pickedNew, ...pickedReview];
+    // Smart Balanced Mix based on mixRatio
+    const newTarget = Math.round(goalAmount * (mixRatio / 100));
+    const reviewTarget = goalAmount - newTarget;
 
-      // Fill remaining spots if one pool was too small
-      if (pool.length < goalAmount) {
-        const remaining = goalAmount - pool.length;
-        if (pickedNew.length < newTarget) {
-          // Add more review if new is exhausted
+    const pickedNew = newWords.slice(0, newTarget);
+    const pickedReview = reviewWords.slice(0, reviewTarget);
+
+    pool = [...pickedNew, ...pickedReview];
+
+    // Fill remaining spots if one pool was too small
+    if (pool.length < goalAmount) {
+      const remaining = goalAmount - pool.length;
+      if (pickedNew.length < newTarget) {
+        // Add more review if new is exhausted, UNLESS strictly 100% New
+        if (mixRatio < 100) {
           pool = [...pool, ...reviewWords.slice(reviewTarget, reviewTarget + remaining)];
-        } else {
-          // Add more new if review is exhausted
+        }
+      } else {
+        // Add more new if review is exhausted, UNLESS strictly 100% Review
+        if (mixRatio > 0) {
           pool = [...pool, ...newWords.slice(newTarget, newTarget + remaining)];
         }
       }
     }
 
     if (pool.length === 0) {
-      if (type === 'ALL') {
-        pool = list.slice(0, goalAmount);
-        if (pool.length === 0) return;
-      } else {
-        return;
-      }
+      alert('테스트할 단어가 없습니다.');
+      return;
     }
 
-    // Always start TEST mode (can toggle later if needed)
     startSession(pool, 'TEST');
   };
 
@@ -109,8 +210,14 @@ function App() {
   const renderHomeView = () => (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <header className="header-light">
-        <button className="icon-btn" style={{ marginLeft: '-10px' }}><Menu size={24} /></button>
-        <span className="title-main">JLPT Plus</span>
+        <button
+          className="icon-btn"
+          style={{ marginLeft: '-10px', background: 'var(--card-bg)', boxShadow: '0 2px 10px rgba(0,0,0,0.05)' }}
+          onClick={() => setIsModeSelectorOpen(true)}
+        >
+          <Menu size={24} color="currentColor" />
+        </button>
+        <span className="title-main">{appMode === 'JLPT' ? 'JLPT Plus' : 'Kana Practice'}</span>
         <div style={{ width: 24 }} />
       </header>
 
@@ -127,7 +234,7 @@ function App() {
           paddingTop: '20px',
           perspective: '1200px'
         }}>
-          {LEVELS.map((lvl, index) => {
+          {currentLevels.map((lvl, index) => {
             const stats = getLevelStats(lvl);
             const isSelected = activeCardIndex === index;
             const diff = index - activeCardIndex;
@@ -145,7 +252,7 @@ function App() {
                   opacity: diff < 0 ? 0 : (1 - diff * 0.35),
                   rotateY: diff > 0 ? diff * -12 : 0,
                   rotate: diff < 0 ? -15 : 0,
-                  zIndex: LEVELS.length - index,
+                  zIndex: currentLevels.length - index,
                 }}
                 transition={{ type: "spring", stiffness: 400, damping: 30 }}
                 style={{
@@ -155,7 +262,17 @@ function App() {
                   height: '440px',
                   cursor: isSelected ? 'grab' : 'pointer',
                 }}
-                onClick={() => isSelected ? setSelectedLevel(lvl) : setActiveCardIndex(index)}
+                onClick={() => {
+                  if (isSelected) {
+                    if (appMode === 'KANA') {
+                      handleStartSession(lvl);
+                    } else {
+                      setSelectedLevel(lvl);
+                    }
+                  } else {
+                    setActiveCardIndex(index);
+                  }
+                }}
               >
                 <div
                   className="level-card"
@@ -169,34 +286,35 @@ function App() {
                     borderRadius: '36px'
                   }}
                 >
-                  {/* Premium Studio Graphics (Simple but Not Boring) */}
                   <div className="poster-bg-decoration">
                     <div className="poster-noise" />
                     <div className="poster-dot-grid" />
                     <div className="poster-glass-shine" />
                   </div>
 
-                <div style={{
-                  position: 'relative',
-                  zIndex: 2,
-                  height: '100%',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  justifyContent: 'center',
-                  alignItems: 'center'
-                }}>
-                  <div className="level-title-poster" style={{
-                    color: lvl === 'N1' ? '#1e40af' : lvl === 'N5' ? '#0ea5e9' : lvl === 'N4' ? '#d97706' : lvl === 'N3' ? '#db2777' : '#6d28d9'
-                  }}>{lvl}</div>
-                </div>
+                  <div style={{
+                    position: 'relative',
+                    zIndex: 2,
+                    height: '100%',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'center',
+                    alignItems: 'center'
+                  }}>
+                    <div className="level-title-poster" style={{
+                      color: lvl.includes('N1') ? '#1e40af' : lvl.includes('N5') ? '#0ea5e9' : lvl.includes('N4') ? '#d97706' : lvl.includes('N3') ? '#db2777' : '#6d28d9',
+                      fontSize: appMode === 'KANA' ? '3rem' : '8rem',
+                      letterSpacing: appMode === 'KANA' ? '-2px' : '-6px'
+                    }}>{lvl}</div>
+                  </div>
 
                   <div className="poster-footer-stats">
                     <div style={{ flex: 1 }}>
-                      <div className="poster-badge-item">VOCABULARY</div>
+                      <div className="poster-badge-item">{appMode === 'JLPT' ? 'VOCABULARY' : 'ALPHABET'}</div>
                     </div>
                     <div style={{ textAlign: 'right' }}>
-                      <div className="poster-badge-item" style={{ color: '#000', marginBottom: '2px' }}>{stats.total} WORDS</div>
-                      <div className="poster-badge-item" style={{ fontSize: '0.6rem', opacity: 0.5 }}>{stats.totalKanji} KANJI</div>
+                      <div className="poster-badge-item" style={{ color: '#000', marginBottom: '2px' }}>{stats.total} {appMode === 'JLPT' ? 'WORDS' : 'CHARS'}</div>
+                      {appMode === 'JLPT' && <div className="poster-badge-item" style={{ fontSize: '0.6rem', opacity: 0.5 }}>{stats.totalKanji} KANJI</div>}
                     </div>
                   </div>
                 </div>
@@ -206,7 +324,7 @@ function App() {
         </div>
 
         <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginBottom: '60px' }}>
-          {LEVELS.map((_, i) => (
+          {currentLevels.map((_, i) => (
             <motion.div
               key={i}
               animate={{
@@ -227,13 +345,10 @@ function App() {
   const renderDetailView = (lvl: string) => {
     const stats = getLevelStats(lvl);
     const percent = Math.round((stats.known / (stats.total || 1)) * 100);
-
-    // Calculate how many words we can actually study
-    const newWordsLeft = stats.total - stats.known;
-    const todayNew = Math.min(newWordsLeft, goalAmount);
-    
-    // Review words available for a standalone review session
     const todayReview = Math.min(stats.known, goalAmount);
+
+    const newTarget = Math.round(goalAmount * (mixRatio / 100));
+    const reviewTarget = goalAmount - newTarget;
 
     return (
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%', position: 'relative' }}>
@@ -249,11 +364,11 @@ function App() {
 
         <div className="detail-content">
           <div className="study-card">
-            <div className="study-card-title">자동 학습</div>
-
+            <div className="study-card-title">자동 학습 스케줄러</div>
+            
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>목표 학습량</span>
+                <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>하루 목표 학습량</span>
                 <select
                   value={goalAmount}
                   onChange={(e) => setGoalAmount(Number(e.target.value))}
@@ -266,6 +381,9 @@ function App() {
                   <option value={20}>20개</option>
                   <option value={35}>35개</option>
                   <option value={50}>50개</option>
+                  <option value={100}>100개</option>
+                  <option value={150}>150개</option>
+                  <option value={200}>200개</option>
                 </select>
               </div>
 
@@ -285,25 +403,36 @@ function App() {
               </div>
             </div>
 
-            <div
-              className="row-item"
-              style={{ cursor: 'pointer' }}
-              onClick={() => handleStartSession(lvl, 'NEW')}
-            >
-              <span>새 단어 (단독 테스트)</span>
-              <span className="val">{todayNew} <ChevronRight size={18} color="var(--text-muted)" /></span>
-            </div>
-            <div
-              className="row-item"
-              style={{ border: 'none', cursor: 'pointer' }}
-              onClick={() => handleStartSession(lvl, 'REVIEW')}
-            >
-              <span>복습 단어 (단독 테스트)</span>
-              <span className="val">{todayReview} <ChevronRight size={18} color="var(--text-muted)" /></span>
+            <div style={{ padding: '0 5px', marginTop: '25px', marginBottom: '30px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
+                <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-secondary)' }}>복습 {100 - mixRatio}% <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>({reviewTarget}개)</span></span>
+                <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>새 단어 {mixRatio}% <span style={{ color: 'var(--accent-color)', fontSize: '0.8rem' }}>({newTarget}개)</span></span>
+              </div>
+              <input 
+                type="range" 
+                min="0" max="100" step="5" 
+                value={mixRatio} 
+                onChange={(e) => setMixRatio(Number(e.target.value))}
+                style={{ 
+                  width: '100%', 
+                  accentColor: 'var(--accent-color)', 
+                  cursor: 'pointer',
+                  height: '6px',
+                  borderRadius: '10px',
+                  background: 'var(--card-border)',
+                  appearance: 'none',
+                  outline: 'none'
+                }}
+              />
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '10px', fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 500, position: 'relative' }}>
+                <span>복습 위주</span>
+                <span style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)' }}>균형</span>
+                <span>새 단어 위주</span>
+              </div>
             </div>
 
-            <button className="big-btn-dark" onClick={() => handleStartSession(lvl, 'ALL')}>
-              자동 학습 (섞어서 시작)
+            <button className="big-btn-dark" style={{ marginTop: '10px' }} onClick={() => handleStartSession(lvl)}>
+              이 설정으로 학습 시작
             </button>
           </div>
 
@@ -376,8 +505,6 @@ function App() {
     </div>
   );
 
-  const activeWord = sessionDeck[currentIndex];
-
   return (
     <div className="app-container">
       {/* Active Session Output */}
@@ -396,30 +523,69 @@ function App() {
               <div style={{ width: 26 }} />
             </header>
 
-            <div style={{ flex: 1, padding: '0 20px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-              <Flashcard
-                key={activeWord.original}
-                word={activeWord}
-                mode={sessionMode}
-                isFirst={currentIndex === 0}
-                onNextTest={(knew) => recordAnswer(activeWord, knew)}
-                onNextStudy={goNextInStudy}
-                onPrevStudy={goPrevInStudy}
-              />
+            <div style={{ flex: 1, padding: '0 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ position: 'relative', width: '100%', height: '480px', perspective: '1200px' }}>
+                {sessionDeck.slice(currentIndex, currentIndex + 3).reverse().map((word, revIndex, arr) => {
+                  const relIndex = arr.length - 1 - revIndex;
+                  const isTopCard = relIndex === 0;
+
+                  return (
+                    <DeckCard
+                      key={word.original}
+                      word={word}
+                      mode={sessionMode}
+                      isTopCard={isTopCard}
+                      relIndex={relIndex}
+                      recordAnswer={recordAnswer}
+                      isKanaMode={appMode === 'KANA'}
+                    />
+                  );
+                })}
+              </div>
+
+              {/* ACTION AREA (STATIC) */}
+              {sessionMode === 'TEST' ? (
+                <div className="action-area" style={{ width: '100%', paddingLeft: 0, paddingRight: 0, paddingTop: '10px', paddingBottom: 0 }}>
+                  <button className="btn-action btn-fail" onClick={() => recordAnswer(sessionDeck[currentIndex], false)}>
+                    <X size={32} />
+                  </button>
+                  <button className="btn-action btn-pass" onClick={() => recordAnswer(sessionDeck[currentIndex], true)}>
+                    <Check size={32} />
+                  </button>
+                </div>
+              ) : (
+                <div className="action-area" style={{ width: '100%', paddingLeft: 0, paddingRight: 0, paddingTop: '10px', paddingBottom: 0 }}>
+                  <button
+                    className="btn-action"
+                    style={{ background: currentIndex === 0 ? 'var(--card-bg)' : 'rgba(56, 189, 248, 0.2)', color: currentIndex === 0 ? 'var(--text-secondary)' : 'var(--text-primary)', border: '1px solid var(--card-border)' }}
+                    onClick={goPrevInStudy}
+                    disabled={currentIndex === 0}
+                  >
+                    <ChevronLeft size={26} /> 이전
+                  </button>
+                  <button
+                    className="btn-action"
+                    style={{ background: 'rgba(56, 189, 248, 0.2)', border: '1px solid var(--card-border)' }}
+                    onClick={goNextInStudy}
+                  >
+                    다음 <ChevronRight size={26} />
+                  </button>
+                </div>
+              )}
 
               {sessionMode === 'TEST' && (
                 <button
                   onClick={undoLastAnswer}
                   disabled={currentIndex === 0}
                   style={{
-                    marginTop: '30px',
+                    marginTop: '20px',
                     background: 'none', border: 'none',
                     color: currentIndex === 0 ? 'transparent' : 'var(--text-secondary)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                    fontSize: '0.9rem', fontWeight: 600, cursor: 'pointer'
+                    fontSize: '0.95rem', fontWeight: 600, cursor: 'pointer'
                   }}
                 >
-                  <Undo2 size={18} /> 이전 취소
+                  <Undo2 size={20} /> 이전 취소
                 </button>
               )}
             </div>
@@ -433,6 +599,18 @@ function App() {
       )}
 
       {isWordListOpen && <WordListModal onClose={() => setIsWordListOpen(false)} />}
+      <AnimatePresence>
+        {isModeSelectorOpen && (
+          <ModeSelectionSidebar
+            onClose={() => setIsModeSelectorOpen(false)}
+            currentMode={appMode}
+            onSelectMode={(mode) => {
+              setAppMode(mode);
+              setActiveCardIndex(0);
+            }}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

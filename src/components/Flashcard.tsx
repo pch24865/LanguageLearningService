@@ -1,36 +1,21 @@
 import React, { useState } from 'react';
-import { Eye, EyeOff, X, Check, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Eye, EyeOff } from 'lucide-react';
 import { useStore, type Word } from '../store/useStore';
+import { motion, type MotionValue } from 'framer-motion';
 
 interface FlashcardProps {
   word: Word;
-  mode: 'STUDY' | 'TEST';
-  isFirst: boolean;
-  onNextTest: (knewIt: boolean) => void;
-  onNextStudy: () => void;
-  onPrevStudy: () => void;
+  overlayColor?: MotionValue<string>;
+  isKanaMode?: boolean;
 }
 
-const Flashcard: React.FC<FlashcardProps> = ({ word, mode, isFirst, onNextTest, onNextStudy, onPrevStudy }) => {
+const Flashcard: React.FC<FlashcardProps> = ({ word, overlayColor, isKanaMode }) => {
   const [flipped, setFlipped] = useState(false);
   const showFurigana = useStore((state) => state.showFurigana);
   const toggleFurigana = useStore((state) => state.toggleFurigana);
 
   const handleFlip = () => {
     setFlipped(!flipped);
-  };
-
-  const handleAction = (e: React.MouseEvent, knewIt: boolean) => {
-    e.stopPropagation();
-    setFlipped(false);
-    onNextTest(knewIt);
-  };
-
-  const handleStudyAction = (e: React.MouseEvent, direction: 'PREV' | 'NEXT') => {
-    e.stopPropagation();
-    setFlipped(false);
-    if (direction === 'PREV') onPrevStudy();
-    if (direction === 'NEXT') onNextStudy();
   };
 
   return (
@@ -40,17 +25,21 @@ const Flashcard: React.FC<FlashcardProps> = ({ word, mode, isFirst, onNextTest, 
 
           {/* FRONT */}
           <div className="flashcard-face flashcard-front">
-            <button
-              className="icon-btn"
-              onClick={(e) => { e.stopPropagation(); toggleFurigana(); }}
-              style={{ position: 'absolute', top: '15px', right: '15px' }}
-            >
-              {showFurigana ? <Eye size={24} /> : <EyeOff size={24} />}
-            </button>
+            {!isKanaMode && (
+              <button
+                className="icon-btn"
+                onClick={(e) => { e.stopPropagation(); toggleFurigana(); }}
+                style={{ position: 'absolute', top: '15px', right: '15px' }}
+              >
+                {showFurigana ? <Eye size={24} /> : <EyeOff size={24} />}
+              </button>
+            )}
 
-            <div className={`furigana ${showFurigana ? 'visible' : ''}`}>
-              {word.furigana}
-            </div>
+            {!isKanaMode && (
+              <div className={`furigana ${showFurigana ? 'visible' : ''}`}>
+                {word.furigana}
+              </div>
+            )}
 
             <div className="word-original jp-font">
               {word.original || '—'}
@@ -69,12 +58,12 @@ const Flashcard: React.FC<FlashcardProps> = ({ word, mode, isFirst, onNextTest, 
 
             <div className="word-meaning">
               {word.pos && (
-                <span style={{ 
-                  display: 'inline-block', 
-                  fontSize: '0.8rem', 
-                  background: 'rgba(99, 102, 241, 0.1)', 
-                  padding: '4px 10px', 
-                  borderRadius: '12px', 
+                <span style={{
+                  display: 'inline-block',
+                  fontSize: '0.8rem',
+                  background: 'rgba(99, 102, 241, 0.1)',
+                  padding: '4px 10px',
+                  borderRadius: '12px',
                   marginRight: '8px',
                   verticalAlign: 'middle',
                   color: 'var(--accent-color)',
@@ -92,37 +81,16 @@ const Flashcard: React.FC<FlashcardProps> = ({ word, mode, isFirst, onNextTest, 
           </div>
 
         </div>
+        {overlayColor && (
+          <motion.div
+            style={{
+              position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+              backgroundColor: overlayColor, borderRadius: '28px', pointerEvents: 'none',
+              zIndex: 10
+            }}
+          />
+        )}
       </div>
-
-      {/* Actions */}
-      {mode === 'TEST' ? (
-        <div className="action-area">
-          <button className="btn-action btn-fail" onClick={(e) => handleAction(e, false)}>
-            <X size={26} />
-          </button>
-          <button className="btn-action btn-pass" onClick={(e) => handleAction(e, true)}>
-            <Check size={26} />
-          </button>
-        </div>
-      ) : (
-        <div className="action-area" style={{ paddingBottom: '10px' }}>
-          <button
-            className="btn-action"
-            style={{ background: isFirst ? 'var(--card-bg)' : 'rgba(56, 189, 248, 0.2)', color: isFirst ? 'var(--text-secondary)' : 'var(--text-primary)', border: '1px solid var(--card-border)' }}
-            onClick={(e) => handleStudyAction(e, 'PREV')}
-            disabled={isFirst}
-          >
-            <ChevronLeft size={26} /> 이전 카드
-          </button>
-          <button
-            className="btn-action"
-            style={{ background: 'rgba(56, 189, 248, 0.2)', border: '1px solid var(--card-border)' }}
-            onClick={(e) => handleStudyAction(e, 'NEXT')}
-          >
-            다음 카드 <ChevronRight size={26} />
-          </button>
-        </div>
-      )}
     </div>
   );
 };
