@@ -67,7 +67,7 @@ const ModeSelectionSidebar = ({ onClose, currentMode, onSelectMode }: { onClose:
         <button className="icon-btn" style={{ alignSelf: 'flex-end', marginBottom: '20px' }} onClick={onClose}><X size={26} color="var(--text-primary)" /></button>
         <h2 style={{ fontSize: '1.4rem', marginBottom: '30px', fontWeight: 700 }}>어떤 학습을 할까요?</h2>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           <button
             className="big-btn-dark"
             style={{
@@ -102,7 +102,7 @@ const ModeSelectionSidebar = ({ onClose, currentMode, onSelectMode }: { onClose:
             }}
             onClick={() => { onSelectMode('KANJI'); onClose(); }}
           >
-            <span style={{ fontWeight: 800 }}>🈴</span> 한자 학습
+            <span style={{ fontWeight: 800 }}>日</span> 한자
           </button>
         </div>
       </motion.div>
