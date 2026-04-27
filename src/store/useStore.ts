@@ -1,12 +1,23 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
+export interface ExampleWord {
+  word: string;
+  reading: string;
+  meaning: string;
+}
+
 export interface Word {
   original: string;
   furigana: string;
   korean: string;
   pos?: string;
   english?: string;
+  type?: 'VOCAB' | 'KANJI';
+  kunyomi?: string;
+  onyomi?: string;
+  examples?: ExampleWord[];
+  level?: string;
 }
 
 export interface SessionStats {

@@ -8,10 +8,36 @@ import WordListModal from './components/WordListModal';
 import vocabDataRaw from './assets/vocab_data.json';
 import { kanaGroups, KANA_LEVELS } from './assets/kana';
 
+import kanjiN5Raw from './assets/kanjikana_n5.json';
+import kanjiN4Raw from './assets/kanjikana_n4.json';
+import kanjiN3Raw from './assets/kanjikana_n3.json';
+import kanjiN2Raw from './assets/kanjikana_n2.json';
+import kanjiN1Raw from './assets/kanjikana_n1.json';
+
 const vocabData = vocabDataRaw as Record<string, Word[]>;
 const LEVELS = ['N5', 'N4', 'N3', 'N2', 'N1'];
 
-const ModeSelectionSidebar = ({ onClose, currentMode, onSelectMode }: { onClose: () => void, currentMode: string, onSelectMode: (m: 'JLPT' | 'KANA') => void }) => {
+const formatKanji = (raw: any): Word[] => {
+  return raw.map((k: any) => ({
+    original: k.kanji,
+    furigana: '',
+    korean: k.meaning,
+    type: 'KANJI',
+    kunyomi: k.kunyomi,
+    onyomi: k.onyomi,
+    examples: k.examples
+  }));
+};
+
+const kanjiData: Record<string, Word[]> = {
+  N5: formatKanji(kanjiN5Raw),
+  N4: formatKanji(kanjiN4Raw),
+  N3: formatKanji(kanjiN3Raw),
+  N2: formatKanji(kanjiN2Raw),
+  N1: formatKanji(kanjiN1Raw),
+};
+
+const ModeSelectionSidebar = ({ onClose, currentMode, onSelectMode }: { onClose: () => void, currentMode: string, onSelectMode: (m: 'JLPT' | 'KANA' | 'KANJI') => void }) => {
   return (
     <>
       {/* Backdrop */}
@@ -65,6 +91,18 @@ const ModeSelectionSidebar = ({ onClose, currentMode, onSelectMode }: { onClose:
             onClick={() => { onSelectMode('KANA'); onClose(); }}
           >
             <span style={{ fontWeight: 800 }}>あ</span> 히라가나•가타카나
+          </button>
+          <button
+            className="big-btn-dark"
+            style={{
+              background: currentMode === 'KANJI' ? 'var(--accent-color)' : 'var(--card-bg)',
+              color: currentMode === 'KANJI' ? '#fff' : 'var(--text-primary)',
+              border: currentMode === 'KANJI' ? 'none' : '2px solid var(--card-border)',
+              display: 'flex', justifyContent: 'flex-start', paddingLeft: '20px', gap: '15px'
+            }}
+            onClick={() => { onSelectMode('KANJI'); onClose(); }}
+          >
+            <span style={{ fontWeight: 800 }}>🈴</span> 한자 학습
           </button>
         </div>
       </motion.div>
@@ -136,10 +174,10 @@ function App() {
   const [activeCardIndex, setActiveCardIndex] = useState(0);
   const [isWordListOpen, setIsWordListOpen] = useState(false);
   const [isModeSelectorOpen, setIsModeSelectorOpen] = useState(false);
-  const [appMode, setAppMode] = useState<'JLPT' | 'KANA'>('JLPT');
+  const [appMode, setAppMode] = useState<'JLPT' | 'KANA' | 'KANJI'>('JLPT');
 
-  const currentLevels = appMode === 'JLPT' ? LEVELS : KANA_LEVELS;
-  const currentData = appMode === 'JLPT' ? vocabData : kanaGroups as Record<string, Word[]>;
+  const currentLevels = appMode === 'KANA' ? KANA_LEVELS : LEVELS;
+  const currentData = appMode === 'JLPT' ? vocabData : appMode === 'KANA' ? (kanaGroups as Record<string, Word[]>) : kanjiData;
 
   // Stack swipe logic: Swipe left to next, Swipe right to prev
   const handleDragEnd = (_: any, info: PanInfo) => {
@@ -228,7 +266,7 @@ function App() {
         >
           <Menu size={24} color="currentColor" />
         </button>
-        <span className="title-main">{appMode === 'JLPT' ? 'JLPT Plus' : 'Kana Practice'}</span>
+        <span className="title-main">{appMode === 'JLPT' ? 'JLPT Plus' : appMode === 'KANA' ? 'Kana Practice' : 'Kanji Practice'}</span>
         <div style={{ width: 24 }} />
       </header>
 
@@ -321,7 +359,7 @@ function App() {
 
                   <div className="poster-footer-stats">
                     <div style={{ flex: 1 }}>
-                      <div className="poster-badge-item">{appMode === 'JLPT' ? 'VOCABULARY' : 'ALPHABET'}</div>
+                      <div className="poster-badge-item">{appMode === 'JLPT' ? 'VOCABULARY' : appMode === 'KANA' ? 'ALPHABET' : 'KANJI'}</div>
                     </div>
                     <div style={{ textAlign: 'right' }}>
                       <div className="poster-badge-item" style={{ color: '#000', marginBottom: '2px' }}>{stats.total} {appMode === 'JLPT' ? 'WORDS' : 'CHARS'}</div>
