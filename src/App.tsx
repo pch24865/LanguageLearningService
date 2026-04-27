@@ -52,7 +52,7 @@ const ModeSelectionSidebar = ({ onClose, currentMode, onSelectMode }: { onClose:
             }}
             onClick={() => { onSelectMode('JLPT'); onClose(); }}
           >
-            <span>🇯🇵</span> JLPT 단어 학습
+            <span>🇯🇵</span> JLPT 단어
           </button>
           <button
             className="big-btn-dark"
@@ -64,7 +64,7 @@ const ModeSelectionSidebar = ({ onClose, currentMode, onSelectMode }: { onClose:
             }}
             onClick={() => { onSelectMode('KANA'); onClose(); }}
           >
-            <span style={{ fontWeight: 800 }}>あ</span> 가나 연습
+            <span style={{ fontWeight: 800 }}>あ</span> 히라가나•가타카나
           </button>
         </div>
       </motion.div>
@@ -165,6 +165,17 @@ function App() {
 
   const handleStartSession = (lvl: string) => {
     const list = currentData[lvl] || [];
+
+    if (appMode === 'KANA') {
+      const pool = [...list].sort(() => Math.random() - 0.5);
+      if (pool.length === 0) {
+        alert('학습할 글자가 없습니다.');
+        return;
+      }
+      startSession(pool, 'TEST');
+      return;
+    }
+
     let newWords = list.filter(w => !knownWords.includes(w.original));
     let reviewWords = list.filter(w => knownWords.includes(w.original));
 
@@ -365,7 +376,7 @@ function App() {
         <div className="detail-content">
           <div className="study-card">
             <div className="study-card-title">자동 학습 스케줄러</div>
-            
+
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>하루 목표 학습량</span>
@@ -408,14 +419,14 @@ function App() {
                 <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-secondary)' }}>복습 {100 - mixRatio}% <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>({reviewTarget}개)</span></span>
                 <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>새 단어 {mixRatio}% <span style={{ color: 'var(--accent-color)', fontSize: '0.8rem' }}>({newTarget}개)</span></span>
               </div>
-              <input 
-                type="range" 
-                min="0" max="100" step="5" 
-                value={mixRatio} 
+              <input
+                type="range"
+                min="0" max="100" step="5"
+                value={mixRatio}
                 onChange={(e) => setMixRatio(Number(e.target.value))}
-                style={{ 
-                  width: '100%', 
-                  accentColor: 'var(--accent-color)', 
+                style={{
+                  width: '100%',
+                  accentColor: 'var(--accent-color)',
                   cursor: 'pointer',
                   height: '6px',
                   borderRadius: '10px',
