@@ -407,8 +407,10 @@ function App() {
           <button className="icon-btn" onClick={() => setSelectedLevel(null)} style={{ marginLeft: '-10px' }}>
             <ChevronLeft size={28} />
           </button>
-          <span className="title-main">{lvl} 단어</span>
-          <span style={{ fontSize: '0.9rem', color: 'var(--accent-color)', fontWeight: 700, marginRight: '5px' }}>한자</span>
+          <span className="title-main">{lvl} {appMode === 'JLPT' ? '단어' : appMode === 'KANA' ? '글자' : '한자'}</span>
+          <span style={{ fontSize: '0.9rem', color: 'var(--accent-color)', fontWeight: 700, marginRight: '5px' }}>
+            플래시 카드
+          </span>
         </header>
 
         <div className="detail-content">
@@ -489,7 +491,7 @@ function App() {
             <div className="info-header" style={{ cursor: 'pointer' }} onClick={() => setIsWordListOpen(true)}>
               <span className="info-title">{lvl} 학습 정보</span>
               <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}>
-                모든 단어 <ChevronRight size={16} />
+                전체 보기 <ChevronRight size={16} />
               </span>
             </div>
 
@@ -647,7 +649,15 @@ function App() {
         selectedLevel ? renderDetailView(selectedLevel) : renderHomeView()
       )}
 
-      {isWordListOpen && <WordListModal onClose={() => setIsWordListOpen(false)} />}
+      {isWordListOpen && (
+        <WordListModal
+          onClose={() => setIsWordListOpen(false)}
+          appMode={appMode}
+          currentData={currentData}
+          currentLevels={currentLevels}
+          initialLevel={selectedLevel || undefined}
+        />
+      )}
       <AnimatePresence>
         {isModeSelectorOpen && (
           <ModeSelectionSidebar
